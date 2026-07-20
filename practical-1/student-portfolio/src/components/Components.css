@@ -1,0 +1,151 @@
+/* ==========================================================================
+   PORTFOLIO PAGE TITLE HEADER
+   ========================================================================== */
+.portfolio-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.portfolio-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--heading);
+  margin-bottom: 6px;
+}
+
+.portfolio-header p {
+  font-size: 14px;
+  color: var(--text-light);
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================================
+   HERO BRANDING CARD
+   ========================================================================== */
+.branding-card {
+  background: var(--primary-gradient);
+  color: #ffffff;
+  text-align: center;
+  padding: 40px 20px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(13, 148, 136, 0.15);
+  margin-bottom: 24px;
+}
+
+.branding-card h2 {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.branding-card p {
+  font-size: 15px;
+  opacity: 0.9;
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================================
+   SECTION CARDS WITH LEFT ACCENT BORDER
+   ========================================================================== */
+.section-card {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 24px 32px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  text-align: left;
+}
+
+.section-card-title {
+  display: flex;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  border-left: 4px solid var(--primary);
+  padding-left: 12px;
+  margin-bottom: 16px;
+}
+
+.section-card-body p {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.7;
+}
+
+/* ==========================================================================
+   SKILL TAG PILLS
+   ========================================================================== */
+.skills-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.skill-tag-pill {
+  background-color: var(--primary);
+  color: #ffffff;
+  padding: 6px 18px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+/* ==========================================================================
+   PROJECTS SECTION
+   ========================================================================== */
+.project-item {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+.project-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.project-item h4 {
+  font-size: 15px;
+  color: var(--heading);
+  margin: 0 0 6px 0;
+  font-weight: 600;
+}
+
+.project-item p {
+  font-size: 13px;
+  color: var(--text-light);
+  margin: 0;
+}
+
+/* ==========================================================================
+   FOOTER CARD
+   ========================================================================== */
+.footer-card {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.footer-email {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.footer-copyright {
+  font-size: 12px;
+  color: var(--text-light);
+  margin: 0;
+}

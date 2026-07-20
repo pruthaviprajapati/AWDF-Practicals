@@ -1,0 +1,45 @@
+/* Color Variables - Teal & Mint Theme */
+:root {
+  --primary: #0d9488;          /* Deep Teal accent */
+  --primary-gradient: linear-gradient(135deg, #0d9488, #0f766e);
+  --bg: #f0fdfa;               /* Light Mint background */
+  --text: #374151;             /* Charcoal for body text */
+  --text-light: #6b7280;       /* Lighter grey */
+  --heading: #0f172a;          /* Slate for headings */
+  --card-bg: #ffffff;          /* White card backgrounds */
+  --border: #e5e7eb;           /* Light border grey */
+}
+
+/* Global Reset */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* Container matching the screenshot's width */
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+/* Card layout wrapper */
+.portfolio-card {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+}
+
+/* Heading settings */
+h1, h2, h3 {
+  font-family: 'Outfit', sans-serif;
+  margin: 0;
+}
+
+
