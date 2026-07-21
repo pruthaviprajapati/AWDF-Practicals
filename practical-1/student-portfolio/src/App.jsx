@@ -1,26 +1,31 @@
-import Header from './components/Header';
-import About from './components/About';
-import Skills from './components/Skills';
-import Projects from './components/Projects';
+import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import NavBar from './components/NavBar';
 import Footer from './components/Footer';
+import Home from './pages/Home';
+import Projects from './pages/Projects';
+import Contact from './pages/Contact';
+import NotFound from './pages/NotFound';
+import './App.css';
 
 function App() {
-  const studentName = "Pruthavi Prajapati";
-  const studentRole = "Artificial Intelligence & Machine Learning Engineer | CHARUSAT";
-  const studentSkills = ["HTML", "CSS", "JavaScript", "React", "Python", "Node.js", "SQL"];
+  // useState #1 — dark/light mode toggle (supplementary requirement)
+  const [darkMode, setDarkMode] = useState(false);
 
   return (
-    <div className="container">
-      <Header name={studentName} role={studentRole} />
-      <About />
-      <Skills skillList={studentSkills} />
-      <Projects />
+    <div className={darkMode ? 'app-root dark' : 'app-root'}>
+      <NavBar darkMode={darkMode} setDarkMode={setDarkMode} />
+      <main className="page-content">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
       <Footer />
     </div>
   );
 }
 
 export default App;
-
-
-

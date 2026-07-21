@@ -1,16 +1,71 @@
-/* Color Variables - Teal & Mint Theme */
+/* ==========================================================================
+   COLOR VARIABLES — Light Mode (Teal & Mint Theme)
+   ========================================================================== */
 :root {
-  --primary: #0d9488;          /* Deep Teal accent */
+  --primary: #0d9488;
+  --primary-dark: #0f766e;
   --primary-gradient: linear-gradient(135deg, #0d9488, #0f766e);
-  --bg: #f0fdfa;               /* Light Mint background */
-  --text: #374151;             /* Charcoal for body text */
-  --text-light: #6b7280;       /* Lighter grey */
-  --heading: #0f172a;          /* Slate for headings */
-  --card-bg: #ffffff;          /* White card backgrounds */
-  --border: #e5e7eb;           /* Light border grey */
+  --bg: #f0fdfa;
+  --text: #374151;
+  --text-light: #6b7280;
+  --heading: #0f172a;
+  --card-bg: #ffffff;
+  --border: #e5e7eb;
+  --nav-bg: #0d9488;
+  --nav-text: #ffffff;
+  --nav-hover: rgba(255, 255, 255, 0.2);
+  --badge-completed: #dcfce7;
+  --badge-completed-text: #166534;
+  --badge-in-progress: #fef9c3;
+  --badge-in-progress-text: #854d0e;
+  --badge-planned: #ede9fe;
+  --badge-planned-text: #5b21b6;
+  --success-bg: #dcfce7;
+  --success-text: #166534;
+  --success-border: #86efac;
+  --preview-bg: #f0fdfa;
+  --preview-border: #0d9488;
+  --char-normal: #6b7280;
+  --char-limit: #ef4444;
+  --notfound-code: #0d9488;
 }
 
-/* Global Reset */
+/* ==========================================================================
+   COLOR VARIABLES — Dark Mode
+   ========================================================================== */
+.dark {
+  --bg: #0f172a;
+  --text: #cbd5e1;
+  --text-light: #94a3b8;
+  --heading: #f1f5f9;
+  --card-bg: #1e293b;
+  --border: #334155;
+  --nav-bg: #0f172a;
+  --nav-text: #f1f5f9;
+  --nav-hover: rgba(255, 255, 255, 0.08);
+  --badge-completed: #14532d;
+  --badge-completed-text: #86efac;
+  --badge-in-progress: #713f12;
+  --badge-in-progress-text: #fde68a;
+  --badge-planned: #4c1d95;
+  --badge-planned-text: #c4b5fd;
+  --success-bg: #14532d;
+  --success-text: #86efac;
+  --success-border: #166534;
+  --preview-bg: #1e293b;
+  --preview-border: #0d9488;
+  --char-normal: #94a3b8;
+  --char-limit: #f87171;
+  --notfound-code: #0d9488;
+}
+
+/* ==========================================================================
+   GLOBAL RESET & BASE
+   ========================================================================== */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -18,28 +73,36 @@ body {
   background-color: var(--bg);
   color: var(--text);
   line-height: 1.6;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Container matching the screenshot's width */
+.app-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg);
+  transition: background-color 0.3s ease;
+}
+
+.page-content {
+  flex: 1;
+  padding-top: 8px;
+}
+
+/* ==========================================================================
+   CONTAINER
+   ========================================================================== */
 .container {
-  max-width: 800px;
+  max-width: 860px;
   margin: 0 auto;
-  padding: 40px 20px;
+  padding: 32px 20px;
 }
 
-/* Card layout wrapper */
-.portfolio-card {
-  background-color: var(--card-bg);
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
-}
-
-/* Heading settings */
+/* ==========================================================================
+   HEADINGS
+   ========================================================================== */
 h1, h2, h3 {
   font-family: 'Outfit', sans-serif;
   margin: 0;
+  color: var(--heading);
 }
-
-
