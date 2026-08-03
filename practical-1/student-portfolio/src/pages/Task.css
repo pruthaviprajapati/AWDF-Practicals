@@ -1,0 +1,116 @@
+.task-manager-card {
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  width: 100%;
+  padding: 30px;
+}
+
+.section-title {
+  color: var(--primary);
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+  border-left: 4px solid var(--primary);
+  padding-left: 10px;
+}
+
+.subtitle {
+  color: var(--text-light);
+  margin-bottom: 25px;
+  font-size: 0.95rem;
+}
+
+.task-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+}
+
+.task-input {
+  flex: 1;
+  padding: 12px 15px;
+  border: 2px solid var(--border);
+  border-radius: 5px;
+  font-size: 1rem;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.add-btn {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 0 25px;
+  border-radius: 5px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.add-btn:hover {
+  background-color: var(--primary-dark);
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.task-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background-color: var(--preview-bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.task-title {
+  font-weight: 500;
+}
+
+.task-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.update-btn, .delete-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.update-btn {
+  background-color: var(--badge-completed);
+  color: var(--badge-completed-text);
+}
+
+.delete-btn {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.dark .delete-btn {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+.error-message {
+  margin-top: 25px;
+  padding: 15px;
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeeba;
+  border-radius: 5px;
+  font-size: 0.9rem;
+}
+
+.dark .error-message {
+  background-color: #713f12;
+  color: #fde68a;
+  border-color: #854d0e;
+}

@@ -20,6 +20,11 @@ function NavBar({ darkMode, setDarkMode }) {
           </NavLink>
         </li>
         <li>
+          <NavLink to="/tasks" className={({ isActive }) => isActive ? 'active' : ''}>
+            Task
+          </NavLink>
+        </li>
+        <li>
           <NavLink to="/contact" className={({ isActive }) => isActive ? 'active' : ''}>
             Contact
           </NavLink>
