@@ -1,21 +1,31 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import './Task.css';
 
 const API_URL = 'http://localhost:5000/tasks';
 
-function Task() {
+function Task({ user }) {
   const [tasks, setTasks] = useState([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Fetch tasks
+  // Fetch user-wise tasks whenever the logged-in user changes
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    if (user) {
+      fetchTasks();
+    } else {
+      setTasks([]);
+    }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTasks = async () => {
+    if (!user) return;
     try {
-      const res = await fetch(API_URL);
+      const res = await fetch(API_URL, {
+        headers: {
+          'x-user-id': user.id
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setTasks(data);
@@ -27,18 +37,25 @@ function Task() {
 
   const handleAddTask = async (e) => {
     e.preventDefault();
+    if (!user) {
+      setErrorMsg('Please log in to add tasks.');
+      return;
+    }
     if (!newTaskTitle.trim()) return;
     setErrorMsg('');
 
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.id
+        },
         body: JSON.stringify({ title: newTaskTitle })
       });
       if (res.ok) {
         const addedTask = await res.json();
-        setTasks([...tasks, addedTask]);
+        setTasks([addedTask, ...tasks]);
         setNewTaskTitle('');
       } else {
         const errorData = await res.json();
@@ -51,6 +68,7 @@ function Task() {
   };
 
   const handleUpdateTask = async (id, currentTitle) => {
+    if (!user) return;
     const updatedTitle = prompt('Update Task Title:', currentTitle);
     if (updatedTitle === null || updatedTitle.trim() === '') return;
     setErrorMsg('');
@@ -58,7 +76,10 @@ function Task() {
     try {
       const res = await fetch(`${API_URL}/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.id
+        },
         body: JSON.stringify({ title: updatedTitle })
       });
       
@@ -76,10 +97,14 @@ function Task() {
   };
 
   const handleDeleteTask = async (id) => {
+    if (!user) return;
     setErrorMsg('');
     try {
       const res = await fetch(`${API_URL}/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'x-user-id': user.id
+        }
       });
       if (res.ok) {
         setTasks(tasks.filter(t => t.id !== id));
@@ -96,31 +121,54 @@ function Task() {
   return (
     <div className="container">
       <div className="task-manager-card">
-        <h2 className="section-title">Task Manager</h2>
-        <p className="subtitle">Add your daily tasks and manage them with the backend API.</p>
+        <h2 className="section-title">
+          {user ? `${user.username}'s Tasks` : 'Task Manager'}
+        </h2>
+        <p className="subtitle">
+          {user
+            ? 'Manage your user-specific tasks saved in MongoDB database (task_portfolio_db).'
+            : 'Please log in to view and manage your personal tasks.'}
+        </p>
 
-        <form onSubmit={handleAddTask} className="task-form">
-          <input
-            type="text"
-            placeholder="Write a task..."
-            value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
-            className="task-input"
-          />
-          <button type="submit" className="add-btn">+ Add Task</button>
-        </form>
+        {!user ? (
+          <div style={{ textAlign: 'center', margin: '2rem 0' }}>
+            <p style={{ marginBottom: '1rem', color: '#718096' }}>You are currently logged out.</p>
+            <Link to="/login" className="add-btn" style={{ textDecoration: 'none', display: 'inline-block' }}>
+              Go to Login / Register
+            </Link>
+          </div>
+        ) : (
+          <>
+            <form onSubmit={handleAddTask} className="task-form">
+              <input
+                type="text"
+                placeholder="Write a task..."
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                className="task-input"
+              />
+              <button type="submit" className="add-btn">+ Add Task</button>
+            </form>
 
-        <div className="task-list">
-          {tasks.map(task => (
-            <div key={task.id} className="task-item">
-              <span className="task-title">{task.title}</span>
-              <div className="task-actions">
-                <button onClick={() => handleUpdateTask(task.id, task.title)} className="update-btn">Update</button>
-                <button onClick={() => handleDeleteTask(task.id)} className="delete-btn">Delete</button>
-              </div>
+            <div className="task-list">
+              {tasks.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#a0aec0', marginTop: '1.5rem' }}>
+                  No tasks found. Add a new task above!
+                </p>
+              ) : (
+                tasks.map(task => (
+                  <div key={task.id} className="task-item">
+                    <span className="task-title">{task.title}</span>
+                    <div className="task-actions">
+                      <button onClick={() => handleUpdateTask(task.id, task.title)} className="update-btn">Update</button>
+                      <button onClick={() => handleDeleteTask(task.id)} className="delete-btn">Delete</button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          ))}
-        </div>
+          </>
+        )}
         
         {errorMsg && (
           <div className="error-message">

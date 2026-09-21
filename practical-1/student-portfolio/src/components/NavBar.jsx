@@ -1,7 +1,15 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import './Components.css';
 
-function NavBar({ darkMode, setDarkMode }) {
+function NavBar({ darkMode, setDarkMode, user, setUser }) {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('portfolio_user');
+    navigate('/login');
+  };
+
   return (
     <nav className="navbar">
       <div className="navbar-logo">
@@ -29,17 +37,40 @@ function NavBar({ darkMode, setDarkMode }) {
             Contact
           </NavLink>
         </li>
+        <li>
+          <NavLink to="/login" className={({ isActive }) => isActive ? 'active' : ''}>
+            {user ? `👤 ${user.username}` : 'Login'}
+          </NavLink>
+        </li>
       </ul>
 
-      {/* Dark/Light mode toggle using useState passed from App */}
-      <button
-        id="dark-mode-toggle"
-        className="dark-toggle-btn"
-        onClick={() => setDarkMode(prev => !prev)}
-        aria-label="Toggle dark mode"
-      >
-        {darkMode ? '☀ Light' : '🌙 Dark'}
-      </button>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        {user && (
+          <button
+            onClick={handleLogout}
+            style={{
+              padding: '0.4rem 0.8rem',
+              borderRadius: '6px',
+              border: 'none',
+              background: '#e53e3e',
+              color: 'white',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.85rem'
+            }}
+          >
+            Logout
+          </button>
+        )}
+        <button
+          id="dark-mode-toggle"
+          className="dark-toggle-btn"
+          onClick={() => setDarkMode(prev => !prev)}
+          aria-label="Toggle dark mode"
+        >
+          {darkMode ? '☀ Light' : '🌙 Dark'}
+        </button>
+      </div>
     </nav>
   );
 }
