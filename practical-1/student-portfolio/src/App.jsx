@@ -34,6 +34,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/tasks" element={<Task user={user} />} />
+          <Route path="/task" element={<Task user={user} />} />
           <Route path="/login" element={<Login user={user} setUser={setUser} />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="*" element={<NotFound />} />

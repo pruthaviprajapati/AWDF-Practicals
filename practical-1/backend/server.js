@@ -29,8 +29,48 @@ app.use((req, res, next) => {
 
 // MongoDB Connection using process.env.MONGO_URI
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/task_portfolio_db';
+
+// Helper to seed initial sample tasks if database is empty
+async function seedDefaultTasks() {
+    try {
+        const count = await Task.countDocuments();
+        if (count === 0) {
+            console.log('Seeding initial Practical 6 sample tasks...');
+            await Task.create([
+                {
+                    title: 'Learn React & Full Stack Integration',
+                    description: 'Connect the React Task UI to the Node + MongoDB backend built in Practicals 4 and 5.',
+                    status: 'INCOMPLETE',
+                    completed: false,
+                    priority: 'high'
+                },
+                {
+                    title: 'Configure MongoDB Atlas Cloud Database',
+                    description: 'Set up database cluster, schemas, validation, and secure cloud connectivity.',
+                    status: 'COMPLETE',
+                    completed: true,
+                    priority: 'medium'
+                },
+                {
+                    title: 'Build Task Manager with Tabs & PDF Export',
+                    description: 'Build full-stack task UI with tabs, real-time audit logs, SweetAlert2 and PDF export.',
+                    status: 'ONGOING',
+                    completed: false,
+                    priority: 'high'
+                }
+            ]);
+            console.log('Sample tasks successfully seeded.');
+        }
+    } catch (err) {
+        console.error('Error seeding sample tasks:', err);
+    }
+}
+
 mongoose.connect(MONGO_URI)
-    .then(() => console.log('MongoDB connected successfully:', MONGO_URI))
+    .then(async () => {
+        console.log('MongoDB connected successfully:', MONGO_URI);
+        await seedDefaultTasks();
+    })
     .catch((err) => console.error('MongoDB connection error:', err));
 
 // User Extraction Middleware
@@ -47,13 +87,15 @@ app.use(extractUser);
 // Helper to format task object for client
 const formatTask = (task) => ({
     id: task._id.toString(),
+    _id: task._id.toString(),
     title: task.title,
-    description: task.description,
-    completed: task.completed,
-    priority: task.priority,
+    description: task.description || '',
+    status: task.status || (task.completed ? 'COMPLETE' : 'INCOMPLETE'),
+    completed: !!task.completed,
+    priority: task.priority || 'medium',
     createdAt: task.createdAt,
-    userId: task.userId ? task.userId.toString() : null,
-    editTimestamps: task.editTimestamps
+    updatedAt: task.updatedAt || task.createdAt,
+    userId: task.userId ? task.userId.toString() : null
 });
 
 // --- AUTH ROUTES ---
@@ -71,9 +113,7 @@ app.post('/api/register', async (req, res, next) => {
             return res.status(400).json({ error: 'Username already exists' });
         }
 
-        // Hash password with bcrypt (salt rounds = 10)
         const hashedPassword = await bcrypt.hash(password, 10);
-
         const newUser = new User({ username: username.trim(), password: hashedPassword });
         await newUser.save();
 
@@ -99,7 +139,6 @@ app.post('/api/login', async (req, res, next) => {
             return res.status(401).json({ error: 'Invalid username or password' });
         }
 
-        // Compare plain password with stored bcrypt hash
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({ error: 'Invalid username or password' });
@@ -116,21 +155,20 @@ app.post('/api/login', async (req, res, next) => {
 
 // --- TASK ROUTES ---
 
-// GET /tasks - Fetch user tasks (Mongoose Task.find())
+// GET /tasks - Fetch tasks (supports both user-specific and global/guest tasks)
 app.get('/tasks', async (req, res, next) => {
     try {
-        if (!req.userId) {
-            return res.status(200).json([]);
-        }
-
-        const userTasks = await Task.find({ userId: req.userId }).sort({ createdAt: -1 });
-        res.status(200).json(userTasks.map(formatTask));
+        const filter = req.userId 
+            ? { $or: [{ userId: req.userId }, { userId: null }, { userId: { $exists: false } }] } 
+            : {};
+        const tasks = await Task.find(filter).sort({ createdAt: -1 });
+        res.status(200).json(tasks.map(formatTask));
     } catch (err) {
         next(err);
     }
 });
 
-// GET /tasks/:id - Return a single task or 404 JSON if not found (Supplementary Problem #3)
+// GET /tasks/:id - Return a single task or 404
 app.get('/tasks/:id', async (req, res, next) => {
     try {
         const taskId = req.params.id;
@@ -138,9 +176,7 @@ app.get('/tasks/:id', async (req, res, next) => {
             return res.status(404).json({ error: 'Task not found: Invalid task ID format' });
         }
 
-        const query = req.userId ? { _id: taskId, userId: req.userId } : { _id: taskId };
-        const task = await Task.findOne(query);
-
+        const task = await Task.findById(taskId);
         if (!task) {
             return res.status(404).json({ error: 'Task not found' });
         }
@@ -151,25 +187,30 @@ app.get('/tasks/:id', async (req, res, next) => {
     }
 });
 
-// POST /tasks - Create task using Task.create() / new Task()
+// POST /tasks - Create task in MongoDB
 app.post('/tasks', async (req, res, next) => {
     try {
-        if (!req.userId) {
-            return res.status(401).json({ error: 'Unauthorized. Please log in to add tasks.' });
+        const { title, description, priority, status } = req.body;
+
+        if (!title || !title.trim()) {
+            return res.status(400).json({ error: 'Title is required' });
         }
 
-        const { title, description, priority } = req.body;
+        const normalizedStatus = status ? status.toUpperCase() : 'INCOMPLETE';
+        const validStatus = ['INCOMPLETE', 'ONGOING', 'COMPLETE'].includes(normalizedStatus)
+            ? normalizedStatus
+            : 'INCOMPLETE';
 
         const newTask = new Task({
-            title,
+            title: title.trim(),
             description: description || '',
+            status: validStatus,
+            completed: validStatus === 'COMPLETE',
             priority: priority || 'medium',
-            userId: req.userId,
-            completed: false,
+            userId: req.userId || null,
             editTimestamps: []
         });
 
-        // Mongoose validation and pre-save hook run during save()
         await newTask.save();
         res.status(201).json(formatTask(newTask));
     } catch (err) {
@@ -177,41 +218,35 @@ app.post('/tasks', async (req, res, next) => {
     }
 });
 
-// PUT /tasks/:id - Update task using Mongoose methods with 24h edit limit check
+// PUT /tasks/:id - Update task in MongoDB
 app.put('/tasks/:id', async (req, res, next) => {
     try {
-        if (!req.userId) {
-            return res.status(401).json({ error: 'Unauthorized. Please log in.' });
-        }
-
         const taskId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(taskId)) {
             return res.status(404).json({ error: 'Task not found: Invalid task ID format' });
         }
 
-        const task = await Task.findOne({ _id: taskId, userId: req.userId });
+        const task = await Task.findById(taskId);
         if (!task) {
             return res.status(404).json({ error: 'Task not found' });
         }
 
-        const { title, description, completed, priority } = req.body;
+        const { title, description, completed, priority, status } = req.body;
 
-        // Check 24-hour edit limit (max 3 edits)
-        const now = new Date();
-        const oneDayMs = 24 * 60 * 60 * 1000;
-        task.editTimestamps = task.editTimestamps.filter(timestamp => (now - new Date(timestamp)) < oneDayMs);
-
-        if (task.editTimestamps.length >= 3) {
-            const unlockTime = new Date(new Date(task.editTimestamps[0]).getTime() + oneDayMs).toISOString();
-            return res.status(429).json({ error: `Task editing limit reached. You can edit again after ${unlockTime}.` });
-        }
-
-        task.editTimestamps.push(now);
-
-        if (title !== undefined) task.title = title;
+        if (title !== undefined) task.title = title.trim();
         if (description !== undefined) task.description = description;
-        if (completed !== undefined) task.completed = completed;
         if (priority !== undefined) task.priority = priority;
+        
+        if (status !== undefined) {
+            const normStatus = status.toUpperCase();
+            if (['INCOMPLETE', 'ONGOING', 'COMPLETE'].includes(normStatus)) {
+                task.status = normStatus;
+                task.completed = (normStatus === 'COMPLETE');
+            }
+        } else if (completed !== undefined) {
+            task.completed = !!completed;
+            task.status = completed ? 'COMPLETE' : 'INCOMPLETE';
+        }
 
         await task.save();
         res.status(200).json(formatTask(task));
@@ -220,24 +255,20 @@ app.put('/tasks/:id', async (req, res, next) => {
     }
 });
 
-// DELETE /tasks/:id - Delete task using Task.findOneAndDelete()
+// DELETE /tasks/:id - Delete task from MongoDB
 app.delete('/tasks/:id', async (req, res, next) => {
     try {
-        if (!req.userId) {
-            return res.status(401).json({ error: 'Unauthorized. Please log in.' });
-        }
-
         const taskId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(taskId)) {
             return res.status(404).json({ error: 'Task not found: Invalid task ID format' });
         }
 
-        const deletedTask = await Task.findOneAndDelete({ _id: taskId, userId: req.userId });
+        const deletedTask = await Task.findByIdAndDelete(taskId);
         if (!deletedTask) {
             return res.status(404).json({ error: 'Task not found' });
         }
 
-        res.status(200).json({ message: 'Task deleted successfully' });
+        res.status(200).json({ message: 'Task deleted successfully', id: taskId });
     } catch (err) {
         next(err);
     }
@@ -252,7 +283,6 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
     console.error('Global Error Handler:', err);
 
-    // Mongoose Validation Error
     if (err.name === 'ValidationError') {
         const structuredErrors = {};
         for (let field in err.errors) {
@@ -264,7 +294,6 @@ app.use((err, req, res, next) => {
         });
     }
 
-    // Cast Error (e.g. invalid ObjectId format)
     if (err.name === 'CastError') {
         return res.status(400).json({
             error: 'Invalid Data Format',
@@ -272,7 +301,6 @@ app.use((err, req, res, next) => {
         });
     }
 
-    // Duplicate Key Error (e.g. unique username)
     if (err.code === 11000) {
         const field = Object.keys(err.keyValue)[0];
         return res.status(400).json({

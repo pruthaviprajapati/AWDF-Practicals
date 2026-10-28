@@ -28,7 +28,7 @@ function NavBar({ darkMode, setDarkMode, user, setUser }) {
           </NavLink>
         </li>
         <li>
-          <NavLink to="/tasks" className={({ isActive }) => isActive ? 'active' : ''}>
+          <NavLink to="/task" className={({ isActive }) => isActive ? 'active' : ''}>
             Task
           </NavLink>
         </li>

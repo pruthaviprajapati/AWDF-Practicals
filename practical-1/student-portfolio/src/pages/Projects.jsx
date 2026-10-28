@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import '../components/Components.css';
 
 const Spinner = () => (
@@ -15,102 +16,141 @@ const Spinner = () => (
     <style>{`
       @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     `}</style>
-    <p>Loading projects...</p>
+    <p>Loading tasks from Node + MongoDB backend...</p>
   </div>
 );
 
 const ErrorMessage = ({ message, onRetry }) => (
-  <div className="error-container" style={{ textAlign: 'center', padding: '40px', color: 'red' }}>
-    <h3>Error fetching projects</h3>
+  <div className="error-container" style={{ textAlign: 'center', padding: '40px', color: '#dc2626' }}>
+    <h3>Error fetching tasks from backend</h3>
     <p>{message}</p>
     <button onClick={onRetry} className="submit-btn" style={{ marginTop: '10px' }}>Retry</button>
   </div>
 );
 
 function Projects() {
-  const [repos, setRepos] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchRepos = () => {
+  const fetchTasks = () => {
     setLoading(true);
     setError(null);
-    fetch('https://api.github.com/users/pruthaviprajapati/repos')
+    fetch('http://localhost:5000/tasks')
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
       })
-      .then((data) => setRepos(data))
+      .then((data) => setTasks(data))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchRepos();
+    fetchTasks();
   }, []);
 
-  const filteredRepos = repos.filter(repo => 
-    repo.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredTasks = tasks.filter(task => 
+    (task.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (task.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <div className="container">
       {/* Page heading */}
       <div className="portfolio-header">
-        <h1>My GitHub Projects</h1>
-        <p>A collection of my recent work, showcasing practical development, UI design, and problem-solving across full-stack projects.</p>
+        <h1>Backend Tasks &amp; Projects</h1>
+        <p>
+          Practical 6 Integration: Replaced GitHub repo data with live task data persisted in MongoDB Atlas &amp; Node.js backend.
+        </p>
       </div>
 
-      {/* Filter bar with search */}
-      <div className="section-card">
-        <div className="project-filter-bar" style={{ display: 'block' }}>
-          <label className="filter-label" style={{ display: 'block', marginBottom: '8px' }}>Search Repository</label>
+      {/* Filter bar with search and link to full task manager */}
+      <div className="section-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div className="project-filter-bar" style={{ display: 'block', flex: 1, minWidth: '240px' }}>
+          <label className="filter-label" style={{ display: 'block', marginBottom: '8px' }}>Search Task / Project</label>
           <input 
             type="text" 
             className="form-input" 
             style={{ width: '100%', maxWidth: '100%' }}
-            placeholder="Search Repository" 
+            placeholder="Search by title or description..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+        </div>
+
+        <div>
+          <Link
+            to="/task"
+            className="submit-btn"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              textDecoration: 'none',
+              padding: '10px 18px',
+              fontSize: '14px',
+              fontWeight: 600
+            }}
+          >
+            📋 Open Task Manager (CRUD &amp; PDF) →
+          </Link>
         </div>
       </div>
 
       {/* States rendering */}
       {loading && <Spinner />}
-      {error && <ErrorMessage message={error} onRetry={fetchRepos} />}
+      {error && <ErrorMessage message={error} onRetry={fetchTasks} />}
 
       {!loading && !error && (
         <div className="projects-grid">
-          {filteredRepos.length > 0 ? filteredRepos.map((repo) => (
-            <div key={repo.id} className="project-card">
+          {filteredTasks.length > 0 ? filteredTasks.map((task, idx) => (
+            <div key={task.id || task._id || idx} className="project-card">
               <div className="project-card-header">
-                <h3 className="project-card-title">{repo.name}</h3>
-                {repo.language && (
-                  <span className="project-badge badge-planned" style={{ backgroundColor: 'var(--bg)', color: 'var(--primary)', border: '1px solid var(--primary)' }}>
-                    {repo.language}
-                  </span>
-                )}
+                <h3 className="project-card-title">{task.title}</h3>
+                <span
+                  className="project-badge"
+                  style={{
+                    backgroundColor: task.status === 'COMPLETE' ? '#dcfce7' : task.status === 'ONGOING' ? '#dbeafe' : '#ffedd5',
+                    color: task.status === 'COMPLETE' ? '#15803d' : task.status === 'ONGOING' ? '#1d4ed8' : '#c2410c',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '5px',
+                    fontSize: '12px'
+                  }}
+                >
+                  {task.status || (task.completed ? 'COMPLETE' : 'INCOMPLETE')}
+                </span>
               </div>
               <p className="project-card-desc">
-                {repo.description || 'No description available'}
+                {task.description || 'No description provided.'}
               </p>
               
               <div className="project-tags" style={{ marginBottom: '14px', fontSize: '13px', color: 'var(--text-light)', display: 'flex', gap: '15px' }}>
-                <span title="Stars">⭐ {repo.stargazers_count}</span>
-                <span title="Forks">🍴 {repo.forks_count}</span>
-                <span title="Updated At">🕒 {new Date(repo.updated_at).toLocaleDateString()}</span>
+                <span title="Priority">⚡ Priority: {task.priority || 'medium'}</span>
+                <span title="Created Date">🕒 {task.createdAt ? new Date(task.createdAt).toLocaleDateString() : 'N/A'}</span>
               </div>
               
               <div>
-                <a href={repo.html_url} target="_blank" rel="noopener noreferrer" className="submit-btn" style={{ padding: '6px 14px', fontSize: '12px', textDecoration: 'none', display: 'inline-block' }}>
-                  View Repository →
-                </a>
+                <Link
+                  to="/task"
+                  className="submit-btn"
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    textDecoration: 'none',
+                    display: 'inline-block'
+                  }}
+                >
+                  Manage in Task UI →
+                </Link>
               </div>
             </div>
           )) : (
-            <p style={{ textAlign: 'center', width: '100%' }}>No repositories found matching your search.</p>
+            <p style={{ textAlign: 'center', width: '100%', padding: '2rem' }}>
+              No tasks found. Open the Task Manager to add new tasks to MongoDB!
+            </p>
           )}
         </div>
       )}
