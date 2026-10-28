@@ -767,7 +767,7 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
                     <input
                       type="text"
                       className="auth-input"
-                      placeholder="e.g. Suman"
+                      placeholder="e.g. Pruthavi Prajapati"
                       value={authFormData.fullName}
                       onChange={(e) => setAuthFormData({ ...authFormData, fullName: e.target.value })}
                       required
@@ -783,7 +783,7 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
                   <input
                     type="email"
                     className="auth-input"
-                    placeholder="e.g. suman@gmail.com"
+                    placeholder="e.g. pruthavi@gmail.com"
                     value={authFormData.email}
                     onChange={(e) => setAuthFormData({ ...authFormData, email: e.target.value })}
                     required
