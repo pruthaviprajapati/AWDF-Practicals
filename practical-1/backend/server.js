@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const User = require('./models/User');
 const Task = require('./models/Task');
@@ -27,15 +28,18 @@ app.use((req, res, next) => {
     next();
 });
 
-// MongoDB Connection using process.env.MONGO_URI
+// Environment Configuration
+const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/task_portfolio_db';
+const JWT_SECRET = process.env.JWT_SECRET || 'awdf_practical_07_jwt_secret_key_2026';
+const TOKEN_EXPIRY = '24h';
 
 // Helper to seed initial sample tasks if database is empty
 async function seedDefaultTasks() {
     try {
         const count = await Task.countDocuments();
         if (count === 0) {
-            console.log('Seeding initial Practical 6 sample tasks...');
+            console.log('Seeding initial Practical 7 sample tasks...');
             await Task.create([
                 {
                     title: 'Learn React & Full Stack Integration',
@@ -73,17 +77,6 @@ mongoose.connect(MONGO_URI)
     })
     .catch((err) => console.error('MongoDB connection error:', err));
 
-// User Extraction Middleware
-const extractUser = (req, res, next) => {
-    const userId = req.headers['x-user-id'];
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-        req.userId = userId;
-    }
-    next();
-};
-
-app.use(extractUser);
-
 // Helper to format task object for client
 const formatTask = (task) => ({
     id: task._id.toString(),
@@ -98,69 +91,163 @@ const formatTask = (task) => ({
     userId: task.userId ? task.userId.toString() : null
 });
 
+// --- JWT AUTHENTICATION MIDDLEWARE ---
+// Verifies Bearer token. Matches Fig 4 error response verbatim.
+const authMiddleware = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            error: "Access denied. No authentication token provided. Expected 'Authorization: Bearer <token>'"
+        });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({
+            error: "Access denied. No authentication token provided. Expected 'Authorization: Bearer <token>'"
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
+        req.userId = decoded.id;
+        next();
+    } catch (err) {
+        return res.status(401).json({
+            error: 'Invalid or expired token. Please log in again.'
+        });
+    }
+};
+
+// --- SERVER-SIDE INPUT VALIDATION MIDDLEWARE ---
+// Rejects requests with missing required fields before reaching the database (Fig 5)
+const validateTaskInput = (req, res, next) => {
+    const { title } = req.body;
+    if (!title || typeof title !== 'string' || !title.trim()) {
+        return res.status(400).json({ error: 'Task title is required' });
+    }
+    next();
+};
+
 // --- AUTH ROUTES ---
 
-// POST /api/register
+// POST /api/register - User Registration with bcrypt password hashing + JWT token generation (Fig 1)
 app.post('/api/register', async (req, res, next) => {
     try {
-        const { username, password } = req.body;
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password are required' });
+        const { name, fullName, email, username, password } = req.body;
+        const displayName = (name || fullName || username || '').trim();
+        const userEmail = (email || '').trim().toLowerCase();
+        const userPass = password;
+
+        if (!displayName) {
+            return res.status(400).json({ error: 'Full name is required' });
+        }
+        if (!userEmail) {
+            return res.status(400).json({ error: 'Email address is required' });
+        }
+        if (!userPass || userPass.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters long' });
         }
 
-        const existingUser = await User.findOne({ username: username.trim() });
+        // Check for existing user
+        const existingUser = await User.findOne({
+            $or: [{ email: userEmail }, { username: displayName }]
+        });
         if (existingUser) {
-            return res.status(400).json({ error: 'Username already exists' });
+            return res.status(400).json({ error: 'User with this email already exists' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username: username.trim(), password: hashedPassword });
+        // Hash password securely with bcrypt (10 salt rounds)
+        const hashedPassword = await bcrypt.hash(userPass, 10);
+
+        const newUser = new User({
+            name: displayName,
+            email: userEmail,
+            username: displayName,
+            password: hashedPassword
+        });
         await newUser.save();
 
+        // Generate JWT Token
+        const token = jwt.sign(
+            { id: newUser._id.toString(), email: newUser.email, name: newUser.name },
+            JWT_SECRET,
+            { expiresIn: TOKEN_EXPIRY }
+        );
+
         res.status(201).json({
-            user: { id: newUser._id.toString(), username: newUser.username },
-            message: 'Registration successful'
+            token,
+            user: {
+                id: newUser._id.toString(),
+                name: newUser.name,
+                email: newUser.email
+            },
+            message: 'User registered successfully with bcrypt password hashing'
         });
     } catch (err) {
         next(err);
     }
 });
 
-// POST /api/login
+// POST /api/login - User Login with bcrypt password verification + JWT token generation (Fig 2)
 app.post('/api/login', async (req, res, next) => {
     try {
-        const { username, password } = req.body;
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password are required' });
+        const { email, username, password } = req.body;
+        const identifier = (email || username || '').trim().toLowerCase();
+
+        if (!identifier || !password) {
+            return res.status(400).json({ error: 'Email/username and password are required' });
         }
 
-        const user = await User.findOne({ username: username.trim() });
+        // Search by email or username
+        const user = await User.findOne({
+            $or: [{ email: identifier }, { username: identifier }]
+        });
         if (!user) {
-            return res.status(401).json({ error: 'Invalid username or password' });
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
+        // Compare password using bcrypt
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid username or password' });
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
+        // Generate JWT Token
+        const token = jwt.sign(
+            { id: user._id.toString(), email: user.email || user.username, name: user.name || user.username },
+            JWT_SECRET,
+            { expiresIn: TOKEN_EXPIRY }
+        );
+
         res.status(200).json({
-            user: { id: user._id.toString(), username: user.username },
-            message: 'Login successful'
+            token,
+            user: {
+                id: user._id.toString(),
+                name: user.name || user.username,
+                email: user.email || user.username
+            },
+            message: 'Login successful with JWT token generation'
         });
     } catch (err) {
         next(err);
     }
 });
 
-// --- TASK ROUTES ---
+// --- PROTECTED TASK ROUTES (All protected using authMiddleware) ---
 
-// GET /tasks - Fetch tasks (supports both user-specific and global/guest tasks)
-app.get('/tasks', async (req, res, next) => {
+// GET /tasks - Protected: Fetch tasks (Fig 3)
+app.get('/tasks', authMiddleware, async (req, res, next) => {
     try {
-        const filter = req.userId 
-            ? { $or: [{ userId: req.userId }, { userId: null }, { userId: { $exists: false } }] } 
-            : {};
+        // Return tasks associated with the authenticated user or common seeded tasks
+        const filter = {
+            $or: [
+                { userId: req.userId },
+                { userId: null },
+                { userId: { $exists: false } }
+            ]
+        };
         const tasks = await Task.find(filter).sort({ createdAt: -1 });
         res.status(200).json(tasks.map(formatTask));
     } catch (err) {
@@ -168,8 +255,8 @@ app.get('/tasks', async (req, res, next) => {
     }
 });
 
-// GET /tasks/:id - Return a single task or 404
-app.get('/tasks/:id', async (req, res, next) => {
+// GET /tasks/:id - Protected: Return single task
+app.get('/tasks/:id', authMiddleware, async (req, res, next) => {
     try {
         const taskId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(taskId)) {
@@ -187,14 +274,10 @@ app.get('/tasks/:id', async (req, res, next) => {
     }
 });
 
-// POST /tasks - Create task in MongoDB
-app.post('/tasks', async (req, res, next) => {
+// POST /tasks - Protected + Server-Side Validation: Create task (Fig 5)
+app.post('/tasks', authMiddleware, validateTaskInput, async (req, res, next) => {
     try {
         const { title, description, priority, status } = req.body;
-
-        if (!title || !title.trim()) {
-            return res.status(400).json({ error: 'Title is required' });
-        }
 
         const normalizedStatus = status ? status.toUpperCase() : 'INCOMPLETE';
         const validStatus = ['INCOMPLETE', 'ONGOING', 'COMPLETE'].includes(normalizedStatus)
@@ -207,7 +290,7 @@ app.post('/tasks', async (req, res, next) => {
             status: validStatus,
             completed: validStatus === 'COMPLETE',
             priority: priority || 'medium',
-            userId: req.userId || null,
+            userId: req.userId,
             editTimestamps: []
         });
 
@@ -218,8 +301,8 @@ app.post('/tasks', async (req, res, next) => {
     }
 });
 
-// PUT /tasks/:id - Update task in MongoDB
-app.put('/tasks/:id', async (req, res, next) => {
+// PUT /tasks/:id - Protected: Update task
+app.put('/tasks/:id', authMiddleware, async (req, res, next) => {
     try {
         const taskId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(taskId)) {
@@ -233,7 +316,12 @@ app.put('/tasks/:id', async (req, res, next) => {
 
         const { title, description, completed, priority, status } = req.body;
 
-        if (title !== undefined) task.title = title.trim();
+        if (title !== undefined) {
+            if (typeof title !== 'string' || !title.trim()) {
+                return res.status(400).json({ error: 'Task title is required' });
+            }
+            task.title = title.trim();
+        }
         if (description !== undefined) task.description = description;
         if (priority !== undefined) task.priority = priority;
         
@@ -255,8 +343,8 @@ app.put('/tasks/:id', async (req, res, next) => {
     }
 });
 
-// DELETE /tasks/:id - Delete task from MongoDB
-app.delete('/tasks/:id', async (req, res, next) => {
+// DELETE /tasks/:id - Protected: Delete task
+app.delete('/tasks/:id', authMiddleware, async (req, res, next) => {
     try {
         const taskId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(taskId)) {
@@ -279,7 +367,7 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Route not found' });
 });
 
-// Global Error Handling Middleware - Formats validation errors into structured JSON
+// Global Error Handling Middleware
 app.use((err, req, res, next) => {
     console.error('Global Error Handler:', err);
 
@@ -312,7 +400,6 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: err.message || 'Something went wrong on the server' });
 });
 
-const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

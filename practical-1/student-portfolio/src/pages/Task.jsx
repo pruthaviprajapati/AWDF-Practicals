@@ -5,27 +5,42 @@ import autoTable from 'jspdf-autotable';
 import './Task.css';
 
 const API_BASE_URL = 'http://localhost:5000/tasks';
+const AUTH_URL = 'http://localhost:5000/api';
 
-function Task({ user }) {
+function Task({ user, token, onAuthSuccess, onLogout }) {
   const [tasks, setTasks] = useState([]);
   const [activeFilter, setActiveFilter] = useState('ALL');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [updatingTaskId, setUpdatingTaskId] = useState(null);
 
-  // Modal states for Create / Edit
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create'); // 'create' or 'edit'
+  // Auth Modal state (Fig 1: Registration and Login Modal)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(!token);
+  const [authTab, setAuthTab] = useState('register'); // 'login' or 'register'
+  const [authFormData, setAuthFormData] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  // Task Modal state (Create / Edit)
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [taskModalMode, setTaskModalMode] = useState('create');
   const [currentTaskId, setCurrentTaskId] = useState(null);
-  const [formData, setFormData] = useState({
+  const [taskFormData, setTaskFormData] = useState({
     title: '',
     description: '',
     status: 'INCOMPLETE',
     priority: 'medium'
   });
 
-  // Audit Logs (stored in state + localStorage)
+  // Audit Logs
   const [auditLogs, setAuditLogs] = useState(() => {
     try {
       const saved = localStorage.getItem('task_audit_logs');
@@ -35,7 +50,6 @@ function Task({ user }) {
     }
   });
 
-  // Helper to add audit log
   const addAuditLog = (action, message) => {
     const newLog = {
       id: Date.now() + Math.random().toString(36).substring(2, 6),
@@ -49,41 +63,142 @@ function Task({ user }) {
       try {
         localStorage.setItem('task_audit_logs', JSON.stringify(updated));
       } catch (err) {
-        console.error('Failed to save audit logs to localStorage', err);
+        console.error('Failed to save audit logs', err);
       }
       return updated;
     });
   };
 
-  // Fetch tasks from Node + MongoDB backend
+  // Fetch tasks with JWT Bearer Token (Fig 3)
   const fetchTasks = async (showAudit = false) => {
+    if (!token) {
+      setTasks([]);
+      return;
+    }
+
     setLoading(true);
     setErrorMsg('');
     try {
-      const headers = {};
-      if (user?.id) {
-        headers['x-user-id'] = user.id;
+      const res = await fetch(API_BASE_URL, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (res.status === 401) {
+        throw new Error('Authentication expired or invalid. Please log in again.');
       }
-      const res = await fetch(API_BASE_URL, { headers });
+
       if (!res.ok) {
-        throw new Error(`Failed to fetch tasks: HTTP ${res.status}`);
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
       }
+
       const data = await res.json();
       setTasks(data);
       if (showAudit) {
-        addAuditLog('FETCH', `Connected to MongoDB Atlas: Loaded ${data.length} tasks.`);
+        addAuditLog('FETCH', `JWT Authenticated: Loaded ${data.length} tasks from MongoDB.`);
       }
     } catch (err) {
       console.error(err);
-      setErrorMsg('Failed to connect to backend server. Make sure MongoDB & Express are running on port 5000.');
+      setErrorMsg(err.message || 'Failed to connect to backend.');
+      if (err.message.includes('expired') || err.message.includes('Authentication')) {
+        setIsAuthModalOpen(true);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTasks(true);
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (token) {
+      setIsAuthModalOpen(false);
+      fetchTasks(true);
+    } else {
+      setIsAuthModalOpen(true);
+      setTasks([]);
+    }
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle User Registration & Login (Fig 1 & Fig 2)
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+
+    if (authTab === 'register') {
+      if (!authFormData.fullName.trim()) {
+        setAuthError('Full name is required.');
+        return;
+      }
+      if (!authFormData.email.trim()) {
+        setAuthError('Email address is required.');
+        return;
+      }
+      if (authFormData.password.length < 6) {
+        setAuthError('Password must be at least 6 characters.');
+        return;
+      }
+      if (authFormData.password !== authFormData.confirmPassword) {
+        setAuthError('Passwords do not match.');
+        return;
+      }
+    } else {
+      if (!authFormData.email.trim() || !authFormData.password) {
+        setAuthError('Please enter both email and password.');
+        return;
+      }
+    }
+
+    setAuthLoading(true);
+    const endpoint = authTab === 'register' ? `${AUTH_URL}/register` : `${AUTH_URL}/login`;
+    const payload = authTab === 'register'
+      ? {
+          name: authFormData.fullName.trim(),
+          email: authFormData.email.trim(),
+          password: authFormData.password
+        }
+      : {
+          email: authFormData.email.trim(),
+          password: authFormData.password
+        };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Authentication failed.');
+      }
+
+      // Successful auth: Save token and user in parent and localStorage
+      onAuthSuccess(data.token, data.user);
+      addAuditLog(
+        'AUTH',
+        authTab === 'register'
+          ? `User "${data.user.name}" registered with bcrypt hashing & JWT token generated.`
+          : `User "${data.user.name}" logged in successfully with JWT Bearer token.`
+      );
+
+      setIsAuthModalOpen(false);
+      setAuthFormData({ fullName: '', email: '', password: '', confirmPassword: '' });
+
+      Swal.fire({
+        icon: 'success',
+        title: authTab === 'register' ? 'Registration Successful!' : 'Welcome Back!',
+        text: `JWT token generated and stored in localStorage.`,
+        timer: 1800,
+        showConfirmButton: false
+      });
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   // Filter tasks based on active tab
   const filteredTasks = useMemo(() => {
@@ -108,36 +223,38 @@ function Task({ user }) {
     return { total, completed, ongoing, incomplete };
   }, [tasks]);
 
-  // Handle open create modal
+  // Create / Edit Task Modal Handlers
   const openCreateModal = () => {
-    setModalMode('create');
+    if (!token) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setTaskModalMode('create');
     setCurrentTaskId(null);
-    setFormData({
+    setTaskFormData({
       title: '',
       description: '',
       status: 'INCOMPLETE',
       priority: 'medium'
     });
-    setIsModalOpen(true);
+    setIsTaskModalOpen(true);
   };
 
-  // Handle open edit modal
   const openEditModal = (task) => {
-    setModalMode('edit');
+    setTaskModalMode('edit');
     setCurrentTaskId(task.id || task._id);
-    setFormData({
+    setTaskFormData({
       title: task.title || '',
       description: task.description || '',
       status: task.status || 'INCOMPLETE',
       priority: task.priority || 'medium'
     });
-    setIsModalOpen(true);
+    setIsTaskModalOpen(true);
   };
 
-  // Submit create or edit form
-  const handleModalSubmit = async (e) => {
+  const handleTaskSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.title.trim()) {
+    if (!taskFormData.title.trim()) {
       Swal.fire({
         icon: 'error',
         title: 'Validation Error',
@@ -147,57 +264,56 @@ function Task({ user }) {
     }
 
     setActionLoading(true);
-    const headers = { 'Content-Type': 'application/json' };
-    if (user?.id) headers['x-user-id'] = user.id;
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
 
     try {
-      if (modalMode === 'create') {
+      if (taskModalMode === 'create') {
         const res = await fetch(API_BASE_URL, {
           method: 'POST',
           headers,
-          body: JSON.stringify(formData)
+          body: JSON.stringify(taskFormData)
         });
 
+        const data = await res.json();
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `HTTP ${res.status}`);
+          throw new Error(data.error || `HTTP ${res.status}`);
         }
 
-        const created = await res.json();
-        setTasks(prev => [created, ...prev]);
-        addAuditLog('CREATE', `Created task "${created.title}" with status "${created.status}".`);
-        setIsModalOpen(false);
+        setTasks(prev => [data, ...prev]);
+        addAuditLog('CREATE', `Created task "${data.title}" (${data.status}).`);
+        setIsTaskModalOpen(false);
 
         Swal.fire({
           icon: 'success',
           title: 'Task Created!',
-          text: `"${created.title}" saved successfully to MongoDB.`,
-          timer: 1800,
+          text: `"${data.title}" saved to MongoDB.`,
+          timer: 1600,
           showConfirmButton: false
         });
       } else {
-        // Edit mode
         const res = await fetch(`${API_BASE_URL}/${currentTaskId}`, {
           method: 'PUT',
           headers,
-          body: JSON.stringify(formData)
+          body: JSON.stringify(taskFormData)
         });
 
+        const data = await res.json();
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `HTTP ${res.status}`);
+          throw new Error(data.error || `HTTP ${res.status}`);
         }
 
-        const updated = await res.json();
-        setTasks(prev => prev.map(t => (t.id === currentTaskId || t._id === currentTaskId ? updated : t)));
-        addAuditLog('UPDATE', `Updated task details for "${updated.title}".`);
-        setIsModalOpen(false);
+        setTasks(prev => prev.map(t => (t.id === currentTaskId || t._id === currentTaskId ? data : t)));
+        addAuditLog('UPDATE', `Updated task details for "${data.title}".`);
+        setIsTaskModalOpen(false);
 
         Swal.fire({
           icon: 'success',
           title: 'Task Updated!',
-          text: `Changes saved to MongoDB.`,
-          timer: 1800,
+          text: 'Changes persisted to MongoDB.',
+          timer: 1600,
           showConfirmButton: false
         });
       }
@@ -206,7 +322,7 @@ function Task({ user }) {
       Swal.fire({
         icon: 'error',
         title: 'Action Failed',
-        text: err.message || 'Failed to save task to backend.'
+        text: err.message || 'Server-side validation error.'
       });
     } finally {
       setActionLoading(false);
@@ -217,37 +333,37 @@ function Task({ user }) {
   const handleStatusChange = async (task, newStatus) => {
     const taskId = task.id || task._id;
     setUpdatingTaskId(taskId);
-    const headers = { 'Content-Type': 'application/json' };
-    if (user?.id) headers['x-user-id'] = user.id;
 
     try {
       const res = await fetch(`${API_BASE_URL}/${taskId}`, {
         method: 'PUT',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ status: newStatus })
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `HTTP ${res.status}`);
+        throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      const updated = await res.json();
-      setTasks(prev => prev.map(t => (t.id === taskId || t._id === taskId ? updated : t)));
+      setTasks(prev => prev.map(t => (t.id === taskId || t._id === taskId ? data : t)));
       addAuditLog('UPDATE', `Updated task "${task.title}" status to ${newStatus}.`);
     } catch (err) {
       console.error(err);
       Swal.fire({
         icon: 'error',
-        title: 'Status Update Failed',
-        text: err.message || 'Could not update task status.'
+        title: 'Update Failed',
+        text: err.message
       });
     } finally {
       setUpdatingTaskId(null);
     }
   };
 
-  // Delete task with SweetAlert2 animated confirmation dialog (Fig 4)
+  // Delete task with SweetAlert2 confirmation dialog
   const handleDeleteTask = (task, index) => {
     const taskId = task.id || task._id;
     const taskIndexDisplay = `#${index + 1}`;
@@ -265,17 +381,16 @@ function Task({ user }) {
       if (result.isConfirmed) {
         setUpdatingTaskId(taskId);
         try {
-          const headers = {};
-          if (user?.id) headers['x-user-id'] = user.id;
-
           const res = await fetch(`${API_BASE_URL}/${taskId}`, {
             method: 'DELETE',
-            headers
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
           });
 
+          const data = await res.json();
           if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || `HTTP ${res.status}`);
+            throw new Error(data.error || `HTTP ${res.status}`);
           }
 
           setTasks(prev => prev.filter(t => t.id !== taskId && t._id !== taskId));
@@ -285,7 +400,7 @@ function Task({ user }) {
             title: 'Deleted!',
             text: 'Task has been deleted from MongoDB.',
             icon: 'success',
-            timer: 1600,
+            timer: 1500,
             showConfirmButton: false
           });
         } catch (err) {
@@ -293,7 +408,7 @@ function Task({ user }) {
           Swal.fire({
             icon: 'error',
             title: 'Delete Failed',
-            text: err.message || 'Could not delete task from server.'
+            text: err.message
           });
         } finally {
           setUpdatingTaskId(null);
@@ -302,51 +417,42 @@ function Task({ user }) {
     });
   };
 
-  // Generate PDF matching Fig. 3 of Practical 6
+  // Export PDF Report
   const handleExportPDF = () => {
     const doc = new jsPDF();
     const generatedDateStr = new Date().toLocaleString();
 
-    // Title
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(30, 41, 59); // slate-800
-    doc.text('Task Management System - Practical 6', 105, 18, { align: 'center' });
+    doc.setTextColor(30, 41, 59);
+    doc.text('Task Management System - Practical 7', 105, 18, { align: 'center' });
 
-    // Subtitle
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 116, 139); // slate-500
-    doc.text('Full Stack Integration: React + Express + MongoDB Atlas', 105, 25, { align: 'center' });
+    doc.setTextColor(100, 116, 139);
+    doc.text('Protected Full Stack Integration: JWT Auth + Node.js + MongoDB Atlas', 105, 25, { align: 'center' });
 
-    // Meta line
     doc.setFontSize(8.5);
-    doc.setTextColor(148, 163, 184); // slate-400
-    doc.text(`Generated on: ${generatedDateStr} | Active Filter: ${activeFilter}`, 105, 31, { align: 'center' });
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Generated on: ${generatedDateStr} | Active Filter: ${activeFilter} | User: ${user?.name || 'Authenticated'}`, 105, 31, { align: 'center' });
 
-    // Summary Statistics Box
-    doc.setDrawColor(226, 232, 240); // slate-200 border
-    doc.setFillColor(248, 250, 252); // slate-50 bg
+    doc.setDrawColor(226, 232, 240);
+    doc.setFillColor(248, 250, 252);
     doc.roundedRect(14, 36, 182, 11, 2, 2, 'FD');
 
     doc.setFontSize(9.5);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(51, 65, 85); // slate-700
+    doc.setTextColor(51, 65, 85);
     const summaryText = `Total Tasks: ${counts.total}  |  Completed: ${counts.completed}  |  Ongoing: ${counts.ongoing}  |  Incomplete: ${counts.incomplete}`;
     doc.text(summaryText, 105, 43.5, { align: 'center' });
 
-    // Table Data preparation
-    const tableRows = filteredTasks.map((t, idx) => {
-      const createdStr = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'N/A';
-      const updatedStr = t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : createdStr;
-      return [
-        `#${idx + 1}`,
-        t.title,
-        (t.status || 'INCOMPLETE').toUpperCase(),
-        createdStr,
-        updatedStr
-      ];
-    });
+    const tableRows = filteredTasks.map((t, idx) => [
+      `#${idx + 1}`,
+      t.title,
+      (t.status || 'INCOMPLETE').toUpperCase(),
+      t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'N/A',
+      t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : 'N/A'
+    ]);
 
     autoTable(doc, {
       startY: 52,
@@ -354,11 +460,10 @@ function Task({ user }) {
       body: tableRows,
       theme: 'grid',
       headStyles: {
-        fillColor: [37, 99, 235], // #2563eb royal blue
+        fillColor: [37, 99, 235],
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 9.5,
-        halign: 'left'
+        fontSize: 9.5
       },
       columnStyles: {
         0: { cellWidth: 15, halign: 'center' },
@@ -374,45 +479,21 @@ function Task({ user }) {
       },
       alternateRowStyles: {
         fillColor: [248, 250, 252]
-      },
-      didParseCell: (data) => {
-        // Color the Status column text
-        if (data.section === 'body' && data.column.index === 2) {
-          const val = data.cell.raw;
-          if (val === 'COMPLETE') {
-            data.cell.styles.textColor = [22, 101, 52]; // green-800
-          } else if (val === 'ONGOING') {
-            data.cell.styles.textColor = [30, 64, 175]; // blue-800
-          } else {
-            data.cell.styles.textColor = [194, 65, 12]; // orange-700
-          }
-        }
       }
     });
 
-    // Total Items footer
     const finalY = doc.lastAutoTable?.finalY || 100;
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139);
     doc.text(`Total Items: ${filteredTasks.length}`, 14, finalY + 7);
 
-    // Save PDF
-    const filename = `Tasks_Report_${activeFilter.toLowerCase()}_${Date.now()}.pdf`;
+    const filename = `Tasks_Report_Practical_7_${Date.now()}.pdf`;
     doc.save(filename);
 
-    addAuditLog('EXPORT', `Generated PDF report "${filename}" (${filteredTasks.length} tasks).`);
-
-    Swal.fire({
-      icon: 'success',
-      title: 'PDF Exported!',
-      text: `Downloaded ${filename}`,
-      timer: 1800,
-      showConfirmButton: false
-    });
+    addAuditLog('EXPORT', `Generated PDF report "${filename}".`);
   };
 
-  // Helper for status badge class
   const getStatusBadge = (status) => {
     const s = (status || 'INCOMPLETE').toUpperCase();
     if (s === 'COMPLETE') return <span className="status-badge badge-complete">COMPLETE</span>;
@@ -427,22 +508,35 @@ function Task({ user }) {
         <div className="task-header-left">
           <div className="task-title-area">
             <span className="task-icon-heading">📋</span>
-            <h1 className="task-main-heading">
-              {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'}
-            </h1>
+            <h1 className="task-main-heading">Tasks Manager</h1>
+            {token && (
+              <span className="jwt-pill" title="Protected route authenticated via JWT token">
+                🟢 JWT Authenticated
+              </span>
+            )}
           </div>
           <p className="task-subtext">
-            Full-stack Task Manager connected to Node.js &amp; MongoDB Atlas. Persisted across browser sessions.
+            {user
+              ? `Logged in as ${user.name} (${user.email}). All routes secured by JWT authentication middleware.`
+              : 'Please log in or register to access protected task management routes.'}
           </p>
         </div>
 
         <div className="task-header-right">
-          <button onClick={handleExportPDF} className="btn-export-pdf" title="Generate and Download PDF Report">
-            <span className="btn-icon">📄</span> Export PDF
-          </button>
-          <button onClick={openCreateModal} className="btn-add-task" title="Create a New Task">
-            <span className="btn-icon">＋</span> Add Task
-          </button>
+          {token ? (
+            <>
+              <button onClick={handleExportPDF} className="btn-export-pdf" title="Generate and Download PDF Report">
+                <span className="btn-icon">📄</span> Export PDF
+              </button>
+              <button onClick={openCreateModal} className="btn-add-task" title="Create a New Task">
+                <span className="btn-icon">＋</span> Add Task
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setIsAuthModalOpen(true)} className="btn-add-task">
+              👤 Login / Register
+            </button>
+          )}
         </div>
       </div>
 
@@ -488,7 +582,7 @@ function Task({ user }) {
             <span className="error-icon">⚠️</span>
             <span>{errorMsg}</span>
           </div>
-          <button onClick={() => fetchTasks(true)} className="btn-retry">Retry Connection</button>
+          <button onClick={() => fetchTasks(true)} className="btn-retry">Retry</button>
         </div>
       )}
 
@@ -497,13 +591,22 @@ function Task({ user }) {
         {loading ? (
           <div className="task-loading-state">
             <div className="custom-spinner"></div>
-            <p>Loading tasks from MongoDB...</p>
+            <p>Verifying JWT token &amp; loading tasks from MongoDB...</p>
+          </div>
+        ) : !token ? (
+          <div className="empty-tasks-card">
+            <div className="empty-icon">🔒</div>
+            <h3>Authentication Required</h3>
+            <p>Tasks are protected with JWT authentication middleware.</p>
+            <button onClick={() => setIsAuthModalOpen(true)} className="btn-add-task" style={{ marginTop: '1rem' }}>
+              Create Account or Log In
+            </button>
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="empty-tasks-card">
             <div className="empty-icon">📂</div>
-            <h3>No tasks found in {activeFilter.toLowerCase()} tab</h3>
-            <p>Click the <strong>+ Add Task</strong> button above to create a task.</p>
+            <h3>No tasks in {activeFilter.toLowerCase()} tab</h3>
+            <p>Click <strong>+ Add Task</strong> above to add your first task.</p>
           </div>
         ) : (
           <div className="tasks-grid">
@@ -535,7 +638,6 @@ function Task({ user }) {
                   </div>
 
                   <div className="task-row-actions">
-                    {/* Status Dropdown Selector */}
                     <div className="status-select-container">
                       <select
                         value={currentStatus}
@@ -550,7 +652,6 @@ function Task({ user }) {
                       </select>
                     </div>
 
-                    {/* Edit button */}
                     <button
                       onClick={() => openEditModal(task)}
                       className="btn-action btn-edit"
@@ -560,7 +661,6 @@ function Task({ user }) {
                       ✏️
                     </button>
 
-                    {/* Delete button (SweetAlert2) */}
                     <button
                       onClick={() => handleDeleteTask(task, index)}
                       className="btn-action btn-delete"
@@ -608,16 +708,185 @@ function Task({ user }) {
         </div>
       </div>
 
-      {/* Create / Edit Modal Dialog */}
-      {isModalOpen && (
-        <div className="modal-overlay" onClick={() => !actionLoading && setIsModalOpen(false)}>
+      {/* =========================================================================
+          FIG 1: User Registration and Login Modal (Matching Practical 7 Screenshot)
+         ========================================================================= */}
+      {isAuthModalOpen && (
+        <div className="modal-overlay" onClick={() => token && setIsAuthModalOpen(false)}>
+          <div className="modal-card auth-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-modal-header">
+              <div className="auth-avatar-circle">
+                <span>👤</span>
+              </div>
+              <h2 className="auth-modal-title">
+                {authTab === 'register' ? 'Create Your Account' : 'Welcome Back'}
+              </h2>
+              <p className="auth-modal-subtitle">
+                {authTab === 'register'
+                  ? 'Register to manage personal tasks and track MongoDB audit logs'
+                  : 'Log in to securely access your JWT protected tasks'}
+              </p>
+              {token && (
+                <button onClick={() => setIsAuthModalOpen(false)} className="modal-close-btn auth-close-x">
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Auth Toggle Tabs */}
+            <div className="auth-toggle-bar">
+              <button
+                type="button"
+                className={`auth-toggle-tab ${authTab === 'login' ? 'active' : ''}`}
+                onClick={() => { setAuthTab('login'); setAuthError(''); }}
+              >
+                🔑 Log In
+              </button>
+              <button
+                type="button"
+                className={`auth-toggle-tab ${authTab === 'register' ? 'active' : ''}`}
+                onClick={() => { setAuthTab('register'); setAuthError(''); }}
+              >
+                👤 Register
+              </button>
+            </div>
+
+            {/* Error banner inside auth modal */}
+            {authError && (
+              <div className="auth-error-box">
+                <span>⚠️ {authError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAuthSubmit} className="auth-form">
+              {authTab === 'register' && (
+                <div className="form-group">
+                  <label className="form-label">Full Name</label>
+                  <div className="input-with-icon">
+                    <span className="field-icon">👤</span>
+                    <input
+                      type="text"
+                      className="auth-input"
+                      placeholder="e.g. Suman"
+                      value={authFormData.fullName}
+                      onChange={(e) => setAuthFormData({ ...authFormData, fullName: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Email Address</label>
+                <div className="input-with-icon">
+                  <span className="field-icon">✉️</span>
+                  <input
+                    type="email"
+                    className="auth-input"
+                    placeholder="e.g. suman@gmail.com"
+                    value={authFormData.email}
+                    onChange={(e) => setAuthFormData({ ...authFormData, email: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Password</label>
+                <div className="input-with-icon">
+                  <span className="field-icon">🔒</span>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    className="auth-input"
+                    placeholder="••••••••"
+                    value={authFormData.password}
+                    onChange={(e) => setAuthFormData({ ...authFormData, password: e.target.value })}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="toggle-password-btn"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex="-1"
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+
+              {authTab === 'register' && (
+                <div className="form-group">
+                  <label className="form-label">Confirm Password</label>
+                  <div className="input-with-icon">
+                    <span className="field-icon">🔒</span>
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      className="auth-input"
+                      placeholder="••••••••"
+                      value={authFormData.confirmPassword}
+                      onChange={(e) => setAuthFormData({ ...authFormData, confirmPassword: e.target.value })}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="toggle-password-btn"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      tabIndex="-1"
+                    >
+                      {showConfirmPassword ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="btn-auth-submit"
+                disabled={authLoading}
+              >
+                {authLoading ? 'Processing...' : authTab === 'register' ? '👤 Create Account' : '🔑 Log In'}
+              </button>
+
+              <div className="auth-footer-switch">
+                {authTab === 'register' ? (
+                  <p>
+                    Already have an account?{' '}
+                    <button
+                      type="button"
+                      className="auth-switch-link"
+                      onClick={() => { setAuthTab('login'); setAuthError(''); }}
+                    >
+                      Log in here
+                    </button>
+                  </p>
+                ) : (
+                  <p>
+                    Don't have an account?{' '}
+                    <button
+                      type="button"
+                      className="auth-switch-link"
+                      onClick={() => { setAuthTab('register'); setAuthError(''); }}
+                    >
+                      Create one here
+                    </button>
+                  </p>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Task Create / Edit Modal */}
+      {isTaskModalOpen && (
+        <div className="modal-overlay" onClick={() => !actionLoading && setIsTaskModalOpen(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">
-                {modalMode === 'create' ? 'Create New Task' : 'Edit Task'}
+                {taskModalMode === 'create' ? 'Create New Task' : 'Edit Task'}
               </h3>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => setIsTaskModalOpen(false)}
                 className="modal-close-btn"
                 disabled={actionLoading}
               >
@@ -625,15 +894,15 @@ function Task({ user }) {
               </button>
             </div>
 
-            <form onSubmit={handleModalSubmit} className="modal-form">
+            <form onSubmit={handleTaskSubmit} className="modal-form">
               <div className="form-group">
                 <label className="form-label">Task Title *</label>
                 <input
                   type="text"
                   className="modal-input"
                   placeholder="e.g. Build Task Manager with Tabs & PDF Export"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  value={taskFormData.title}
+                  onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
                   required
                   autoFocus
                 />
@@ -644,8 +913,8 @@ function Task({ user }) {
                 <textarea
                   className="modal-textarea"
                   placeholder="Provide task details or implementation notes..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  value={taskFormData.description}
+                  onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
                   rows={3}
                 />
               </div>
@@ -655,8 +924,8 @@ function Task({ user }) {
                   <label className="form-label">Status</label>
                   <select
                     className="modal-select"
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    value={taskFormData.status}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, status: e.target.value })}
                   >
                     <option value="INCOMPLETE">Incomplete</option>
                     <option value="ONGOING">Ongoing</option>
@@ -668,8 +937,8 @@ function Task({ user }) {
                   <label className="form-label">Priority</label>
                   <select
                     className="modal-select"
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                    value={taskFormData.priority}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, priority: e.target.value })}
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -681,7 +950,7 @@ function Task({ user }) {
               <div className="modal-actions">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => setIsTaskModalOpen(false)}
                   className="btn-modal-cancel"
                   disabled={actionLoading}
                 >
@@ -692,7 +961,7 @@ function Task({ user }) {
                   className="btn-modal-submit"
                   disabled={actionLoading}
                 >
-                  {actionLoading ? 'Saving...' : modalMode === 'create' ? 'Create Task' : 'Save Changes'}
+                  {actionLoading ? 'Saving...' : taskModalMode === 'create' ? 'Create Task' : 'Save Changes'}
                 </button>
               </div>
             </form>

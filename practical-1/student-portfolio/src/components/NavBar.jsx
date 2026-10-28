@@ -1,14 +1,17 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import './Components.css';
 
-function NavBar({ darkMode, setDarkMode, user, setUser }) {
+function NavBar({ darkMode, setDarkMode, user, onLogout }) {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('portfolio_user');
-    navigate('/login');
+  const handleLogoutClick = () => {
+    if (onLogout) {
+      onLogout();
+    }
+    navigate('/task');
   };
+
+  const displayName = user ? (user.name || user.username || user.email) : null;
 
   return (
     <nav className="navbar">
@@ -37,31 +40,48 @@ function NavBar({ darkMode, setDarkMode, user, setUser }) {
             Contact
           </NavLink>
         </li>
-        <li>
-          <NavLink to="/login" className={({ isActive }) => isActive ? 'active' : ''}>
-            {user ? `👤 ${user.username}` : 'Login'}
-          </NavLink>
-        </li>
       </ul>
 
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        {user && (
-          <button
-            onClick={handleLogout}
+      <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+        {user ? (
+          <>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main, #334155)' }}>
+              👤 {displayName}
+            </span>
+            <button
+              onClick={handleLogoutClick}
+              style={{
+                padding: '0.4rem 0.85rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: '#e53e3e',
+                color: 'white',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '0.82rem'
+              }}
+            >
+              Logout
+            </button>
+          </>
+        ) : (
+          <NavLink
+            to="/task"
             style={{
-              padding: '0.4rem 0.8rem',
+              padding: '0.4rem 0.85rem',
               borderRadius: '6px',
-              border: 'none',
-              background: '#e53e3e',
-              color: 'white',
-              cursor: 'pointer',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#0f172a',
+              textDecoration: 'none',
               fontWeight: 600,
-              fontSize: '0.85rem'
+              fontSize: '0.82rem'
             }}
           >
-            Logout
-          </button>
+            Log In / Register
+          </NavLink>
         )}
+
         <button
           id="dark-mode-toggle"
           className="dark-toggle-btn"
