@@ -40,6 +40,18 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
     priority: 'medium'
   });
 
+  // PDF Date Range Export Modal (Practical 8 - Fig 10 & Fig 11)
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [pdfStartDate, setPdfStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 14);
+    return d.toISOString().split('T')[0];
+  });
+  const [pdfEndDate, setPdfEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [pdfStatusFilter, setPdfStatusFilter] = useState('ALL');
+
   // Audit Logs
   const [auditLogs, setAuditLogs] = useState(() => {
     try {
@@ -174,7 +186,6 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
         throw new Error(data.error || 'Authentication failed.');
       }
 
-      // Successful auth: Save token and user in parent and localStorage
       onAuthSuccess(data.token, data.user);
       addAuditLog(
         'AUTH',
@@ -417,36 +428,75 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
     });
   };
 
-  // Export PDF Report
-  const handleExportPDF = () => {
+  // Export PDF Report with optional Date Range filtering (Practical 8 - Fig 10 & Fig 11)
+  const handleExportPDF = (useDateRange = false) => {
+    let tasksToExport = tasks;
+
+    if (useDateRange) {
+      if (pdfStatusFilter !== 'ALL') {
+        tasksToExport = tasksToExport.filter(t => (t.status || 'INCOMPLETE').toUpperCase() === pdfStatusFilter);
+      }
+      if (pdfStartDate) {
+        const start = new Date(pdfStartDate);
+        start.setHours(0, 0, 0, 0);
+        tasksToExport = tasksToExport.filter(t => new Date(t.createdAt || Date.now()) >= start);
+      }
+      if (pdfEndDate) {
+        const end = new Date(pdfEndDate);
+        end.setHours(23, 59, 59, 999);
+        tasksToExport = tasksToExport.filter(t => new Date(t.createdAt || Date.now()) <= end);
+      }
+    } else {
+      tasksToExport = filteredTasks;
+    }
+
     const doc = new jsPDF();
     const generatedDateStr = new Date().toLocaleString();
 
+    // Title (Fig 11)
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(30, 41, 59);
-    doc.text('Task Management System - Practical 7', 105, 18, { align: 'center' });
+    doc.text('Task Management System - Tasks Report', 105, 18, { align: 'center' });
 
-    doc.setFontSize(11);
+    // Subtitle & Status filter
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 116, 139);
-    doc.text('Protected Full Stack Integration: JWT Auth + Node.js + MongoDB Atlas', 105, 25, { align: 'center' });
+    const activeFilterDisplay = useDateRange ? pdfStatusFilter : activeFilter;
+    doc.text(`Generated on: ${generatedDateStr} | Status Filter: ${activeFilterDisplay}`, 105, 25, { align: 'center' });
 
-    doc.setFontSize(8.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Generated on: ${generatedDateStr} | Active Filter: ${activeFilter} | User: ${user?.name || 'Authenticated'}`, 105, 31, { align: 'center' });
+    if (useDateRange && (pdfStartDate || pdfEndDate)) {
+      doc.setFontSize(8.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Timeline: ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Present'}`, 105, 30, { align: 'center' });
+    }
 
+    // Counts for exported set
+    let expComp = 0, expOng = 0, expIncomp = 0;
+    tasksToExport.forEach(t => {
+      const s = (t.status || 'INCOMPLETE').toUpperCase();
+      if (s === 'COMPLETE') expComp++;
+      else if (s === 'ONGOING') expOng++;
+      else expIncomp++;
+    });
+
+    const boxY = useDateRange && (pdfStartDate || pdfEndDate) ? 34 : 31;
     doc.setDrawColor(226, 232, 240);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(14, 36, 182, 11, 2, 2, 'FD');
+    doc.roundedRect(14, boxY, 182, 10, 2, 2, 'FD');
 
     doc.setFontSize(9.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(51, 65, 85);
-    const summaryText = `Total Tasks: ${counts.total}  |  Completed: ${counts.completed}  |  Ongoing: ${counts.ongoing}  |  Incomplete: ${counts.incomplete}`;
-    doc.text(summaryText, 105, 43.5, { align: 'center' });
+    doc.text(
+      `Total Tasks: ${tasksToExport.length}  |  Completed: ${expComp}  |  Ongoing: ${expOng}  |  Incomplete: ${expIncomp}`,
+      105,
+      boxY + 6.5,
+      { align: 'center' }
+    );
 
-    const tableRows = filteredTasks.map((t, idx) => [
+    const tableRows = tasksToExport.map((t, idx) => [
       `#${idx + 1}`,
       t.title,
       (t.status || 'INCOMPLETE').toUpperCase(),
@@ -455,7 +505,7 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
     ]);
 
     autoTable(doc, {
-      startY: 52,
+      startY: boxY + 14,
       head: [['ID', 'Task Title', 'Status', 'Created Date', 'Updated Date']],
       body: tableRows,
       theme: 'grid',
@@ -486,12 +536,21 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139);
-    doc.text(`Total Items: ${filteredTasks.length}`, 14, finalY + 7);
+    doc.text(`Total Items: ${tasksToExport.length}`, 14, finalY + 7);
 
-    const filename = `Tasks_Report_Practical_7_${Date.now()}.pdf`;
+    const filename = `Tasks_Report_${activeFilterDisplay.toLowerCase()}_${Date.now()}.pdf`;
     doc.save(filename);
 
-    addAuditLog('EXPORT', `Generated PDF report "${filename}".`);
+    setIsPdfModalOpen(false);
+    addAuditLog('EXPORT', `Generated PDF report "${filename}" (${tasksToExport.length} tasks).`);
+
+    Swal.fire({
+      icon: 'success',
+      title: 'PDF Report Exported!',
+      text: `Downloaded ${filename}`,
+      timer: 1600,
+      showConfirmButton: false
+    });
   };
 
   const getStatusBadge = (status) => {
@@ -525,7 +584,11 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
         <div className="task-header-right">
           {token ? (
             <>
-              <button onClick={handleExportPDF} className="btn-export-pdf" title="Generate and Download PDF Report">
+              <button
+                onClick={() => setIsPdfModalOpen(true)}
+                className="btn-export-pdf"
+                title="Download Tasks PDF by Date Range"
+              >
                 <span className="btn-icon">📄</span> Export PDF
               </button>
               <button onClick={openCreateModal} className="btn-add-task" title="Create a New Task">
@@ -709,7 +772,81 @@ function Task({ user, token, onAuthSuccess, onLogout }) {
       </div>
 
       {/* =========================================================================
-          FIG 1: User Registration and Login Modal (Matching Practical 7 Screenshot)
+          FIG 10: Download Tasks PDF by Date Range Modal (Practical 8)
+         ========================================================================= */}
+      {isPdfModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsPdfModalOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Download Tasks PDF by Date Range</h3>
+              <button onClick={() => setIsPdfModalOpen(false)} className="modal-close-btn">
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f1f5f9', fontSize: '0.86rem', color: '#64748b' }}>
+              Select a timeline date range to download only the tasks created within that period:
+            </div>
+
+            <div className="modal-form">
+              <div className="form-group">
+                <label className="form-label">From Date (Start):</label>
+                <input
+                  type="date"
+                  className="modal-input"
+                  value={pdfStartDate}
+                  onChange={(e) => setPdfStartDate(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">To Date (End):</label>
+                <input
+                  type="date"
+                  className="modal-input"
+                  value={pdfEndDate}
+                  onChange={(e) => setPdfEndDate(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Status Filter:</label>
+                <select
+                  className="modal-select"
+                  value={pdfStatusFilter}
+                  onChange={(e) => setPdfStatusFilter(e.target.value)}
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="ONGOING">Ongoing</option>
+                  <option value="COMPLETE">Complete</option>
+                  <option value="INCOMPLETE">Incomplete</option>
+                </select>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  onClick={() => setIsPdfModalOpen(false)}
+                  className="btn-modal-cancel"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportPDF(true)}
+                  className="btn-modal-submit"
+                  style={{ background: '#2563eb' }}
+                >
+                  Download PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          FIG 1: User Registration and Login Modal
          ========================================================================= */}
       {isAuthModalOpen && (
         <div className="modal-overlay" onClick={() => token && setIsAuthModalOpen(false)}>
